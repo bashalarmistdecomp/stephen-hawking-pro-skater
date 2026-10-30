@@ -1,0 +1,188 @@
+{
+  "_about": "Every hand-picked decision of the Hawking skater build, as data. blender_bake.py and build_mod.py replay it; change a number here and run build.sh. Lengths in metres; 'chair' points are in the wheelchair GLB's own coordinates (it faces -X there, Z up, ground at z = -0.477); 'world' points are in the professor GLB's coordinates (he faces -Y, Z up, his feet's floor at z = 0).",
+  "professor": {
+    "source": "assets/models/professor.glb",
+    "delete_objects": [
+      "Icosphere"
+    ],
+    "_delete_floor_box": "the slab under his feet: six loose panels, 0.43 x 0.40 x 0.06 m at floor level in the rest pose. Loose parts lying wholly below max_z and wider than min_span go.",
+    "delete_floor_box": {
+      "max_z": 0.065,
+      "min_span": 0.3
+    },
+    "action": "Sitting_Clap",
+    "frame": 0,
+    "_bone_rotate_deg": "extra rotation on top of the action, per bone, in the bone's local axes (x pitches most bones)",
+    "bone_rotate_deg": {
+      "Hips": [
+        -10,
+        0,
+        0
+      ]
+    },
+    "_ik": "two-bone IK: the bone's tail (wrist / ankle) goes to target_chair; pole_world (optional) is where the elbow / knee points",
+    "ik": {
+      "RightForeArm": {
+        "chain": 3,
+        "target_chair": [
+          -0.115,
+          0.205,
+          0.2
+        ]
+      },
+      "LeftLeg": {
+        "chain": 2,
+        "target_chair": [
+          -0.27,
+          -0.06,
+          -0.12
+        ]
+      },
+      "RightLeg": {
+        "chain": 2,
+        "target_chair": [
+          -0.27,
+          0.06,
+          -0.12
+        ]
+      }
+    },
+    "_keep_rest_rotation": "these bones keep their rest-pose world rotation after IK (feet flat on the footplate)",
+    "keep_rest_rotation": [
+      "LeftFoot",
+      "RightFoot"
+    ],
+    "target_tris": 3600,
+    "smooth_angle_deg": 180,
+    "merge_distance": 0.0004,
+    "_log_bones": "bones whose world position the bake logs after posing",
+    "log_bones": [
+      "Hips",
+      "Spine",
+      "Head",
+      "RightHand",
+      "LeftFoot",
+      "RightFoot"
+    ]
+  },
+  "chair": {
+    "source": "assets/models/wheelchair.glb",
+    "rotate_z_deg": 90,
+    "scale": 1.45,
+    "_seat": "chair-space seat_point lands on the professor's world seat_world (under his thighs)",
+    "seat_point": [
+      0.0,
+      0.0,
+      -0.05
+    ],
+    "seat_world": [
+      0.0,
+      -0.14,
+      0.36
+    ],
+    "delete_parts_smaller_than": 0.012,
+    "merge_distance": 0.0004,
+    "target_tris": 4400,
+    "smooth_angle_deg": 180
+  },
+  "texture_size": 1024,
+  "game": {
+    "_units": "THPS model units per metre (Hawk stands about 3300 units tall on his board)",
+    "units_per_metre": 1800,
+    "_ground_y": "the ground in the board part's space (y down): the board pivot rides 216 units above it",
+    "ground_y": 216,
+    "_front_z": "which way along the game's z axis the model faces (the way it rides): -1, found in play (with +1 he rode backwards); the model is turned about the vertical, never mirrored",
+    "front_z": -1,
+    "_parts": "the skater file's parts: 0-2 are the board and trucks (hidden in bails), 18 the head (the big-head cheat scales it); the mesh is spread over the others",
+    "num_models": 30,
+    "reserved_parts": [
+      0,
+      1,
+      2,
+      18
+    ],
+    "max_vertices_per_part": 250,
+    "root_part": 3,
+    "_anchors": "per animation, what the whole chair follows: the board (default), or the pelvis carrying the board's riding pose (the bails, so the chair falls with the body instead of being thrown across the level)",
+    "pelvis_anims": [
+      44,
+      46,
+      54,
+      55,
+      56,
+      71
+    ],
+    "rest_anim": 0
+  },
+  "mod": {
+    "folder": "HawkingMod",
+    "name": "Stephen Hawking Pro Skater",
+    "author": "Bash Alarmist",
+    "version": "0.1",
+    "description": "A professor in a powered wheelchair, who rides it like a board.",
+    "model": "hawking",
+    "_front_model": "the skater-select screen's model (up to 8 characters): the riding pose turned front_yaw_deg about the vertical so he looks out of the screen; the select camera sees the skater side-on",
+    "front_model": "hking_fe",
+    "front_yaw_deg": -25,
+    "skater": {
+      "Name": "Stephen Hawking",
+      "Base": "Hawk",
+      "Stats": "5, 10, 4, 10",
+      "Age": "57",
+      "Country": "UK",
+      "HomeTown": "Oxford",
+      "YearsPro": "21",
+      "Stance": "Regular",
+      "Height": "5'7"
+    },
+    "base_model": "Models/hawk.psx"
+  },
+  "voice": {
+    "_about": "his voice lines: espeak-ng's Klatt formant synthesis (the family of 1980s synthesizer his was from; not his own voice, whose emulator isn't public) shaped by ffmpeg, then [Voice] in the skater's ini (pc/voice.h in the port). make_voice.py writes build/voice/<model>_<line>.wav; change a line or a setting and rebuild",
+    "espeak": {
+      "_args": "espeak-ng options: -v voice+variant, -s words a minute, -p pitch 0-99, -a amplitude, -g gap between words (10 ms units)",
+      "args": [
+        "-v",
+        "en-us+klatt4",
+        "-s",
+        "135",
+        "-p",
+        "38",
+        "-a",
+        "160",
+        "-g",
+        "2"
+      ]
+    },
+    "_filter": "ffmpeg audio filter after synthesis (the old hardware's narrow band)",
+    "filter": "highpass=f=120,lowpass=f=4800",
+    "peak_db": -3,
+    "lines": {
+      "start": "However difficult life may seem, there is always something you can do and succeed at.",
+      "stars": "One step closer to the stars.",
+      "adapt": "Intelligence is the ability to adapt to change.",
+      "imperfection": "Without imperfection, we would not exist.",
+      "ow": "Ow."
+    },
+    "_events": "which lines play when: Start (a run starts), Trick (a trick scores, at TrickChance percent, Gap seconds after the last line), Bail (he bails), AfterBail (after the Bail line, at AfterBailChance percent); Volume is percent of the sound effects",
+    "events": {
+      "Start": [
+        "start"
+      ],
+      "Trick": [
+        "stars",
+        "adapt"
+      ],
+      "TrickChance": 30,
+      "Gap": 6,
+      "Bail": [
+        "ow"
+      ],
+      "AfterBail": [
+        "imperfection"
+      ],
+      "AfterBailChance": 50,
+      "Volume": 100
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+ "hawking_start.wav": {
+  "text": "However difficult life may seem, there is always something you can do and succeed at.",
+  "espeak": [
+   "-v",
+   "en-us+klatt4",
+   "-s",
+   "135",
+   "-p",
+   "38",
+   "-a",
+   "160",
+   "-g",
+   "2"
+  ],
+  "filter": "highpass=f=120,lowpass=f=4800",
+  "peak_db": -3
+ },
+ "hawking_stars.wav": {
+  "text": "One step closer to the stars.",
+  "espeak": [
+   "-v",
+   "en-us+klatt4",
+   "-s",
+   "135",
+   "-p",
+   "38",
+   "-a",
+   "160",
+   "-g",
+   "2"
+  ],
+  "filter": "highpass=f=120,lowpass=f=4800",
+  "peak_db": -3
+ },
+ "hawking_adapt.wav": {
+  "text": "Intelligence is the ability to adapt to change.",
+  "espeak": [
+   "-v",
+   "en-us+klatt4",
+   "-s",
+   "135",
+   "-p",
+   "38",
+   "-a",
+   "160",
+   "-g",
+   "2"
+  ],
+  "filter": "highpass=f=120,lowpass=f=4800",
+  "peak_db": -3
+ },
+ "hawking_imperfection.wav": {
+  "text": "Without imperfection, we would not exist.",
+  "espeak": [
+   "-v",
+   "en-us+klatt4",
+   "-s",
+   "135",
+   "-p",
+   "38",
+   "-a",
+   "160",
+   "-g",
+   "2"
+  ],
+  "filter": "highpass=f=120,lowpass=f=4800",
+  "peak_db": -3
+ },
+ "hawking_ow.wav": {
+  "text": "Ow.",
+  "espeak": [
+   "-v",
+   "en-us+klatt4",
+   "-s",
+   "135",
+   "-p",
+   "38",
+   "-a",
+   "160",
+   "-g",
+   "2"
+  ],
+  "filter": "highpass=f=120,lowpass=f=4800",
+  "peak_db": -3
+ }
+}

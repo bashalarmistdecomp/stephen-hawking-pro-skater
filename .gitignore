@@ -1,0 +1,9 @@
+# Local only, never committed: disc images, recordings, reference material
+/ref/
+
+# Everything generated: the mod, the bake's check renders, lines tried with --say. The mod is
+# derived from the game's own data.
+/build/
+
+__pycache__/
+*.pyc

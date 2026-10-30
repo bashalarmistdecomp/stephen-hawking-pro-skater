@@ -1,0 +1,545 @@
+diff --git a/game/src/main.cpp b/game/src/main.cpp
+index 598f196..ca9823c 100644
+--- a/game/src/main.cpp
++++ b/game/src/main.cpp
+@@ -57,6 +57,7 @@ extern "C" {
+ #include "game/shell.h"
+ #include "game/frontend.h"
+ #include "game/rail.h"
++#include "pc_voice.h"
+ 
+ extern int GAutoLevela, GAutoPlayer1a, GAutoPlayer2a, GAutoGamea;
+ #define POLYBUFFERSIZE (Levels[GLevel].ExtraPolyBuffer[GNumberOfPlayers - 1] + 0x17c00)
+@@ -839,6 +840,7 @@ void CreateSkatersAndCameras(void) {
+ 		pBruce->InitItem(Stats[pBruce->mSkaterIndex].PSXName2);
+ 	else
+ 		pBruce->InitItem(Stats[pBruce->mSkaterIndex].PSXName);
++	PC_SkaterVoice(pBruce->mSkaterIndex, PC_VOICE_RUN);
+ 
+ 	/* stance: Regular */
+ 	if (*Stats[pBruce->mSkaterIndex].pBio[4] == 'R' || *Stats[pBruce->mSkaterIndex].pBio[4] == 'r')
+@@ -859,6 +861,7 @@ void CreateSkatersAndCameras(void) {
+ 		c2->mCameraMode = (ECameraMode)1;
+ 		p2->mSkaterIndex = SelectedSkater2;
+ 		p2->InitItem(Stats[SelectedSkater2].PSXName2);
++		PC_SkaterVoice(p2->mSkaterIndex, PC_VOICE_RUN);
+ 
+ 		if (*Stats[p2->mSkaterIndex].pBio[4] == 'R' || *Stats[p2->mSkaterIndex].pBio[4] == 'r')
+ 			p2->mExtraFlags |= 2;
+diff --git a/game/src/physics.cpp b/game/src/physics.cpp
+index f8adc22..e6ca549 100644
+--- a/game/src/physics.cpp
++++ b/game/src/physics.cpp
+@@ -17,6 +17,7 @@ extern "C" {
+ #include "game/mem.h"
+ #include "game/psyq.h"
+ #include "game/m3dasm.h"
++#include "pc_voice.h"
+ #include "game/career.h"
+ #include "game/video.h"
+ #include "game/m3d.h"
+@@ -260,6 +261,7 @@ void CBruce::Trick_Trick(ETrick Trick, char *pName, int Score, int) {
+ 		}
+ 
+ 		Panel_Trick(this, pName, Score, 0);
++		PC_SkaterVoice(mSkaterIndex, PC_VOICE_TRICK);
+ 	}
+ }
+ 
+@@ -587,6 +589,7 @@ void CBruce::Bail(int BailNumber) {
+ 	mBailNumber = BailNumber;
+ 	m724 = 0;
+ 	mBails++;
++	PC_SkaterVoice(mSkaterIndex, PC_VOICE_BAIL);
+ 	Trick_Bail();
+ 
+ 	m71C = 0;
+@@ -4852,6 +4855,7 @@ void CBruce::DoPhysics() {
+ 	BaddyCollisionCheck = 1;
+ 	BulletCollisionCheck = 0;
+ 	Trick_PlayerInit(0);
++	PC_SkaterVoice(mSkaterIndex, PC_VOICE_FRAME);
+ 
+ 	/* HandleTimer */
+ 	if (GGame != 2) {
+diff --git a/platform/pc/include/pc/mod_content.h b/platform/pc/include/pc/mod_content.h
+index 9f1bb59..0cc32cc 100644
+--- a/platform/pc/include/pc/mod_content.h
++++ b/platform/pc/include/pc/mod_content.h
+@@ -38,6 +38,8 @@
+  *   [Board1] .. [Board8]  replace that board: Image (b1<Image>.bmp, b2<Image>.bmp,
+  *                       b_<Image>.bmp: the 1P and 2P select pictures and the deck texture; up to
+  *                       9 characters), Name, Tapes (to unlock), Stats (the four bonus bars)
++ *   [Voice]             lines the skater says: Start, Trick, Bail, AfterBail (WAV files, a
++ *                       list to pick from), their Chance, Gap, Volume (pc/voice.h)
+  */
+ #pragma once
+ 
+diff --git a/platform/pc/include/pc/sound.h b/platform/pc/include/pc/sound.h
+index b1a88ec..f3f1e32 100644
+--- a/platform/pc/include/pc/sound.h
++++ b/platform/pc/include/pc/sound.h
+@@ -61,6 +61,12 @@ public:
+     void ReverbDepth(int left, int right);
+     void ReverbChannels(int on, uint32_t channels);
+ 
++    /* ---- a voice clip (pc_voice.cpp) ---- */
++
++    /* Play mono PCM at kRate on top of the sound effects (at their level, times `level`: kFull =
++     * 1.0), replacing any clip playing; null stops it. The data must outlive the clip. */
++    void ClipPlay(const int16_t *mono, uint32_t frames, int level);
++
+     /* ---- the music (pc_stream.cpp) ---- */
+ 
+     /* Queue stereo PCM at `rate` Hz; the mixer resamples it. Flush drops what is queued. */
+@@ -264,6 +270,11 @@ private:
+     int m_sfx[2] = {kFull, kFull};
+     Reverb m_rev;
+     Music m_music;
++    struct {
++        const int16_t *data = nullptr;
++        uint32_t frames = 0, pos = 0;
++        int level = 0;
++    } m_clip;
+     /* the device */
+     uint32_t m_dev = 0;                 /* SDL_AudioDeviceID */
+     SDL_mutex *m_mx = nullptr;
+diff --git a/platform/pc/src/pc_modcontent.cpp b/platform/pc/src/pc_modcontent.cpp
+index e0e6f37..6bc923a 100644
+--- a/platform/pc/src/pc_modcontent.cpp
++++ b/platform/pc/src/pc_modcontent.cpp
+@@ -15,6 +15,7 @@
+ #include "pc/mods.h"
+ #include "pc/platform.h"
+ #include "pc/saves.h"
++#include "pc/voice.h"
+ #include "pc_mods.h"
+ #include "pc_runtime.h"
+ 
+@@ -245,6 +246,7 @@ bool ModContent::AddSkater(const Mod &mod, const char *path, const char *id) {
+     char *value, file[96];
+     long long v[5];
+     IniReader ini;
++    Voice::Set voice;
+     int base = 0, boards = 0;
+     bool named[8] = {};
+     (void)mod;
+@@ -325,7 +327,8 @@ bool ModContent::AddSkater(const Mod &mod, const char *path, const char *id) {
+                     d.Stats[i] = (int32_t)v[i];
+             } else
+                 PC_Log("mods: %s: unknown entry \"%s\" in [%s]", id, key, section);
+-        }
++        } else if (!_stricmp(section, "Voice") && !voice.Read(key, value))
++            PC_Log("mods: %s: unknown entry \"%s\" in [Voice]", id, key);
+     }
+     if (!s.Name || !*s.Name || !s.PSXName || !*s.PSXName) {
+         PC_Log("mods: %s: a skater needs a Name and a Model; not added", id);
+@@ -366,6 +369,19 @@ bool ModContent::AddSkater(const Mod &mod, const char *path, const char *id) {
+     int idx = GAME_SKATERS + m_nskaters;
+     Stats[idx] = s;
+     GNumSkaters = idx + 1;
++    /* a voice clip that isn't there is dropped; the skater speaks with the rest */
++    int lines = 0;
++    for (auto &list : voice.clips) {
++        for (size_t i = 0; i < list.size();)
++            if (HasFile(id, "voice clip", list[i].c_str()))
++                i++;
++            else
++                list.erase(list.begin() + (ptrdiff_t)i);
++        lines += (int)list.size();
++    }
++    g_voice.Assign(idx, voice);
++    if (lines)
++        PC_Log("mods: %s: %d voice clips", id, lines);
+     snprintf(m_skaterId[m_nskaters++], sizeof m_skaterId[0], "%s", id);
+     PC_Log("mods: skater \"%s\" (%s, %s.psx): plays as %s, %s's boards", s.Name, id, s.PSXName,
+            Stats[base].Name, Stats[boards].Name);
+diff --git a/platform/pc/src/pc_sound.cpp b/platform/pc/src/pc_sound.cpp
+index b653202..9ed5525 100644
+--- a/platform/pc/src/pc_sound.cpp
++++ b/platform/pc/src/pc_sound.cpp
+@@ -546,6 +546,15 @@ void Sound::Levels(int sfxL, int sfxR, int musicL, int musicR) {
+     Unlock();
+ }
+ 
++void Sound::ClipPlay(const int16_t *mono, uint32_t frames, int level) {
++    Lock();
++    m_clip.data = frames ? mono : nullptr;
++    m_clip.frames = frames;
++    m_clip.pos = 0;
++    m_clip.level = level;
++    Unlock();
++}
++
+ void Sound::Filter::Init(int length) {
+     free(buf);
+     buf = (float *)calloc((size_t)length, sizeof *buf);
+@@ -695,6 +704,13 @@ void Sound::Mix(uint8_t *stream, int len) {
+             L += (int)wl;
+             R += (int)wr;
+         }
++        if (m_clip.data) {
++            int s = (m_clip.data[m_clip.pos] * m_clip.level) >> 14;
++            L += s;
++            R += s;
++            if (++m_clip.pos == m_clip.frames)
++                m_clip.data = nullptr;
++        }
+         int ml, mr;
+         m_music.Frame(&ml, &mr);
+         out[2 * f] = (int16_t)Clamp16((int)(((int64_t)L * m_sfx[0]) >> 14) + ml);
+diff --git a/platform/pc/include/pc/voice.h b/platform/pc/include/pc/voice.h
+new file mode 100644
+index 0000000..8bfeb09
+--- /dev/null
++++ b/platform/pc/include/pc/voice.h
+@@ -0,0 +1,74 @@
++/* A mod skater's voice lines (pc_voice.cpp; the game's C interface is pc_voice.h).
++ *
++ * [Voice] in a mod's Skaters/<name>.ini names WAV files (16-bit PCM; mono at 44.1 kHz plays as
++ * is, anything else is mixed down and resampled) in the mod's Data folder. Where a list is given
++ * one is picked at random:
++ *   Start             when a run starts (the skater's first physics frame)
++ *   Trick             when a trick scores, at TrickChance percent (default 30), and only when
++ *                     Gap seconds (default 6) have passed since the last line ended (game
++ *                     frames: a line "plays" for its length on the frame clock)
++ *   Bail              when the skater bails, cutting off anything playing
++ *   AfterBail         after the Bail clip, at AfterBailChance percent (default 50)
++ *   Volume            percent of the sound effects' level (default 100)
++ * One line plays at a time, on top of the sound effects (pc/sound.h's clip). */
++#pragma once
++
++#include <stdint.h>
++
++#include <map>
++#include <string>
++#include <vector>
++
++#include "pc/game_data.h"
++
++namespace pc {
++
++class Voice {
++public:
++    enum Event { kStart, kTrick, kBail, kAfterBail, kEvents };
++
++    /* One skater's [Voice]. */
++    struct Set {
++        std::vector<std::string> clips[kEvents];
++        int chance[kEvents] = {100, 30, 100, 50};
++        int gap = 6 * 60;         /* frames */
++        int level = 0x4000;       /* pc::Sound::kFull = 100% */
++        /* One entry; false if the key isn't one of [Voice]'s. */
++        bool Read(const char *key, const char *value);
++        bool Any() const;
++    };
++
++    void Assign(int skater, const Set &set);
++
++    /* pc_voice.h's events */
++    void Run(int skater);
++    void Frame(int skater);
++    void Trick(int skater);
++    void Bail(int skater);
++
++private:
++    struct Clip {
++        std::string name;
++        std::vector<int16_t> pcm;   /* mono at pc::Sound::kRate; empty if it can't be played */
++        bool tried = false;
++    };
++
++    bool Has(int skater, Event e) const;
++    uint32_t Random();
++    bool Roll(int percent);
++    /* A random clip of the skater's for the event, loaded on first use; null if it can't be. */
++    const Clip *Pick(int skater, Event e);
++    void Play(int skater, Event e);
++
++    Set m_sets[GAME_MAX_SKATERS];
++    std::map<std::string, Clip> m_clips;
++    bool m_startDue[GAME_MAX_SKATERS] = {};
++    int m_afterBail = -1;         /* the skater whose AfterBail is due, at m_afterBailAt */
++    uint32_t m_afterBailAt = 0;
++    uint32_t m_lineEnds = 0;      /* PC_FrameCount when the line playing ends */
++    uint32_t m_rng = 0;
++};
++
++extern Voice g_voice;
++
++} // namespace pc
+diff --git a/platform/pc/include/pc_voice.h b/platform/pc/include/pc_voice.h
+new file mode 100644
+index 0000000..d52728e
+--- /dev/null
++++ b/platform/pc/include/pc_voice.h
+@@ -0,0 +1,24 @@
++/* A mod skater's voice lines, at the game's moments (pc_voice.cpp; the class is pc::Voice,
++ * pc/voice.h). The game says what happened to which skater (CBruce::mSkaterIndex); a skater
++ * without a [Voice] in its manifest says nothing. */
++#ifndef PC_VOICE_H
++#define PC_VOICE_H
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++enum {
++    PC_VOICE_RUN,   /* the skater was made for a run (CreateSkatersAndCameras) */
++    PC_VOICE_FRAME, /* its physics frame (CBruce::DoPhysics): the run's opening line goes here */
++    PC_VOICE_TRICK, /* a trick scored (CBruce::Trick_Trick) */
++    PC_VOICE_BAIL   /* it bailed (CBruce::Bail) */
++};
++
++void PC_SkaterVoice(int skater, int event);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/platform/pc/src/pc_voice.cpp b/platform/pc/src/pc_voice.cpp
+new file mode 100644
+index 0000000..3d43fcb
+--- /dev/null
++++ b/platform/pc/src/pc_voice.cpp
+@@ -0,0 +1,239 @@
++/* A mod skater's voice lines (pc/voice.h, pc_voice.h). */
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++
++#include "pc/assets.h"
++#include "pc/platform.h"
++#include "pc/sound.h"
++#include "pc/voice.h"
++#include "pc_frame.h"
++#include "pc_runtime.h"
++#include "pc_voice.h"
++
++namespace pc {
++
++Voice g_voice;
++
++namespace {
++
++const char *const kKeys[Voice::kEvents] = {"Start", "Trick", "Bail", "AfterBail"};
++constexpr int kAfterBailPause = 12; /* frames between the Bail clip and the AfterBail one */
++
++uint32_t Le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
++int16_t Le16(const uint8_t *p) { return (int16_t)(p[0] | p[1] << 8); }
++
++bool Trace() {
++    static int trace = -1;
++    if (trace < 0)
++        trace = getenv("THPS_TRACE_SOUND") && atoi(getenv("THPS_TRACE_SOUND"));
++    return trace;
++}
++
++/* A RIFF WAV of 16-bit PCM, as mono at Sound::kRate (mixed down, resampled linearly). */
++bool LoadWav(const char *path, std::vector<int16_t> &out) {
++    FILE *f = fopen(path, "rb");
++    if (!f)
++        return false;
++    std::vector<uint8_t> d;
++    fseek(f, 0, SEEK_END);
++    long n = ftell(f);
++    fseek(f, 0, SEEK_SET);
++    d.resize(n > 0 ? (size_t)n : 0);
++    bool ok = n > 12 && fread(d.data(), 1, d.size(), f) == d.size();
++    fclose(f);
++    if (!ok || memcmp(d.data(), "RIFF", 4) || memcmp(d.data() + 8, "WAVE", 4))
++        return false;
++    int format = 0, channels = 0, bits = 0;
++    uint32_t rate = 0, size = 0;
++    const uint8_t *data = nullptr;
++    for (size_t p = 12; p + 8 <= d.size();) {
++        uint32_t len = Le32(&d[p + 4]);
++        if (len > d.size() - p - 8)
++            len = (uint32_t)(d.size() - p - 8);
++        if (!memcmp(&d[p], "fmt ", 4) && len >= 16) {
++            format = (uint16_t)Le16(&d[p + 8]);
++            channels = (uint16_t)Le16(&d[p + 10]);
++            rate = Le32(&d[p + 12]);
++            bits = (uint16_t)Le16(&d[p + 22]);
++        } else if (!memcmp(&d[p], "data", 4)) {
++            data = &d[p + 8];
++            size = len;
++        }
++        p += 8 + len + (len & 1);
++    }
++    if (format != 1 || bits != 16 || channels < 1 || !rate || !data)
++        return false;
++    uint32_t frames = size / (2 * channels);
++    std::vector<int> mono(frames);
++    for (uint32_t i = 0; i < frames; i++) {
++        int s = 0;
++        for (int c = 0; c < channels; c++)
++            s += Le16(data + 2 * ((size_t)i * channels + c));
++        mono[i] = s / channels;
++    }
++    out.resize((size_t)((uint64_t)frames * Sound::kRate / rate));
++    for (size_t i = 0; i < out.size(); i++) {
++        uint64_t at = (uint64_t)i * rate;
++        uint32_t j = (uint32_t)(at / Sound::kRate), frac = (uint32_t)(at % Sound::kRate);
++        int a = mono[j], b = j + 1 < frames ? mono[j + 1] : a;
++        out[i] = (int16_t)(a + (int64_t)(b - a) * frac / Sound::kRate);
++    }
++    return true;
++}
++
++} // namespace
++
++bool Voice::Set::Read(const char *key, const char *value) {
++    char chance[32];
++    for (int e = 0; e < kEvents; e++) {
++        if (!_stricmp(key, kKeys[e])) {
++            clips[e].clear();
++            for (const char *p = value; *p;) {
++                size_t len = strcspn(p, ",");
++                std::string name(p, len);
++                name.erase(0, name.find_first_not_of(" \t"));
++                name.erase(name.find_last_not_of(" \t") + 1);
++                if (!name.empty())
++                    clips[e].push_back(name);
++                p += len + (p[len] == ',');
++            }
++            return true;
++        }
++        snprintf(chance, sizeof chance, "%sChance", kKeys[e]);
++        if (!_stricmp(key, chance)) {
++            int v = atoi(value);
++            this->chance[e] = v < 0 ? 0 : v > 100 ? 100 : v;
++            return true;
++        }
++    }
++    if (!_stricmp(key, "Gap")) {
++        gap = (int)(atof(value) * 60);
++        return true;
++    }
++    if (!_stricmp(key, "Volume")) {
++        level = atoi(value) * Sound::kFull / 100;
++        return true;
++    }
++    return false;
++}
++
++bool Voice::Set::Any() const {
++    for (const auto &c : clips)
++        if (!c.empty())
++            return true;
++    return false;
++}
++
++void Voice::Assign(int skater, const Set &set) {
++    if (skater >= 0 && skater < GAME_MAX_SKATERS)
++        m_sets[skater] = set;
++}
++
++bool Voice::Has(int skater, Event e) const {
++    return skater >= 0 && skater < GAME_MAX_SKATERS && !m_sets[skater].clips[e].empty();
++}
++
++/* xorshift32, apart from the game's random numbers so a voice never changes what happens;
++ * THPS_DETERMINISTIC runs pick the same lines every time */
++uint32_t Voice::Random() {
++    if (!m_rng)
++        m_rng = getenv("THPS_DETERMINISTIC") ? 0x9e3779b9u : ((uint32_t)time(nullptr) * 2654435761u) | 1;
++    m_rng ^= m_rng << 13;
++    m_rng ^= m_rng >> 17;
++    m_rng ^= m_rng << 5;
++    return m_rng;
++}
++
++bool Voice::Roll(int percent) { return (int)(Random() % 100) < percent; }
++
++const Voice::Clip *Voice::Pick(int skater, Event e) {
++    const auto &list = m_sets[skater].clips[e];
++    const std::string &name = list[Random() % list.size()];
++    Clip &c = m_clips[name];
++    if (!c.tried) {
++        char path[1024];
++        c.tried = true;
++        c.name = name;
++        if (!g_assets.Find(name.c_str(), path, sizeof path) || !LoadWav(path, c.pcm)) {
++            PC_Log("voice: cannot play %s (it needs to be a 16-bit PCM WAV in Data/)", name.c_str());
++            c.pcm.clear();
++        }
++    }
++    return c.pcm.empty() ? nullptr : &c;
++}
++
++void Voice::Play(int skater, Event e) {
++    const Clip *c = Pick(skater, e);
++    if (!c)
++        return;
++    g_sound.ClipPlay(c->pcm.data(), (uint32_t)c->pcm.size(), m_sets[skater].level);
++    m_lineEnds = PC_FrameCount() + (uint32_t)((uint64_t)c->pcm.size() * 60 / Sound::kRate) + 1;
++    if (Trace())
++        PC_Log("voice: %s: %s", kKeys[e], c->name.c_str());
++}
++
++void Voice::Run(int skater) {
++    if (skater < 0 || skater >= GAME_MAX_SKATERS || !m_sets[skater].Any())
++        return;
++    g_sound.ClipPlay(nullptr, 0, 0);
++    m_startDue[skater] = Has(skater, kStart);
++    m_afterBail = -1;
++    m_lineEnds = PC_FrameCount();
++}
++
++void Voice::Frame(int skater) {
++    if (skater < 0 || skater >= GAME_MAX_SKATERS)
++        return;
++    if (m_startDue[skater]) {
++        m_startDue[skater] = false;
++        Play(skater, kStart);
++    }
++    if (m_afterBail == skater && (int32_t)(PC_FrameCount() - m_afterBailAt) >= 0) {
++        m_afterBail = -1;
++        Play(skater, kAfterBail);
++    }
++}
++
++/* "Playing" is on the frame clock (m_lineEnds), as the game's moments are */
++void Voice::Trick(int skater) {
++    if (!Has(skater, kTrick) || m_afterBail >= 0)
++        return;
++    const Set &s = m_sets[skater];
++    if ((int32_t)(PC_FrameCount() - (m_lineEnds + (uint32_t)s.gap)) >= 0 && Roll(s.chance[kTrick]))
++        Play(skater, kTrick);
++}
++
++void Voice::Bail(int skater) {
++    if (!Has(skater, kBail) && !Has(skater, kAfterBail))
++        return;
++    const Set &s = m_sets[skater];
++    uint32_t now = PC_FrameCount();
++    m_afterBail = -1;
++    if (Has(skater, kBail) && Roll(s.chance[kBail]))
++        Play(skater, kBail);
++    if (Has(skater, kAfterBail) && Roll(s.chance[kAfterBail])) {
++        m_afterBail = skater;
++        m_afterBailAt = ((int32_t)(m_lineEnds - now) > 0 ? m_lineEnds : now) + kAfterBailPause;
++    }
++}
++
++} // namespace pc
++
++void PC_SkaterVoice(int skater, int event) {
++    switch (event) {
++    case PC_VOICE_RUN:
++        pc::g_voice.Run(skater);
++        break;
++    case PC_VOICE_FRAME:
++        pc::g_voice.Frame(skater);
++        break;
++    case PC_VOICE_TRICK:
++        pc::g_voice.Trick(skater);
++        break;
++    case PC_VOICE_BAIL:
++        pc::g_voice.Bail(skater);
++        break;
++    }
++}

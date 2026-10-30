@@ -1,0 +1,4 @@
+[submodule "TonyWasAProSkater"]
+	path = TonyWasAProSkater
+	url = https://github.com/LANCommander/TonyWasAProSkater.git
+	ignore = dirty
