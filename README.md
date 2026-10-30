@@ -1,5 +1,8 @@
 <p align="center"><img src="assets/logo.png" alt="Stephen Hawking Pro Skater" width="520"></p>
 
+> This project was done quickly (2 hours total) and for entertainment purposes. I do not intend on
+> expanding the project.
+
 *Tony Hawk's Pro Skater* (PlayStation, 1999) with one more skater: Stephen Hawking, a professor in a
 powered wheelchair, who rides it like a board. Kickflips, grinds and bails all happen in the chair,
 and he speaks a few of his own lines. A wheelchair doesn't stop anyone going above and beyond.
